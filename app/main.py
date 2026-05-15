@@ -1,6 +1,6 @@
 """
 mymockllm — Manual LLM mock server
-Run: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+Run: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
 """
 import asyncio
 import json
@@ -31,7 +31,9 @@ app.add_middleware(
 # Paths
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).parent
+# Project root (parent of the `app/` package). We keep `.histories/` at the
+# repo root so it survives any further restructuring of the source tree.
+BASE_DIR = Path(__file__).resolve().parent.parent
 HISTORIES_DIR = BASE_DIR / ".histories"
 ACTIVE_FILE = HISTORIES_DIR / ".active"
 

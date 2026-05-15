@@ -7,7 +7,7 @@ Instead of calling a real model, every request is pushed to a browser UI where y
 ## Start
 
 ```bash
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
 ```
 
 …or just `./start.sh`. Open `http://localhost:8000` in your browser.

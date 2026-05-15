@@ -1,11 +1,10 @@
 # mymockllm — API Reference
 
-This service exposes an **OpenAI-compatible** HTTP API so that SWE-agent (via litellm)
-can route requests to any backend model.
+A manual mock server. The browser is the "model": every client request hangs
+until you type a reply in the UI.
 
----
-
-## Base URL
+Two client-facing protocols are accepted on the same server, plus a small set
+of internal endpoints used by the browser UI.
 
 ```
 http://localhost:8000
@@ -13,182 +12,147 @@ http://localhost:8000
 
 ---
 
-## Endpoints
+## Client-facing endpoints
 
-### `POST /chat/completions`
+### `POST /chat/completions` &nbsp;·&nbsp; OpenAI-compatible
 
-The only endpoint SWE-agent calls. Accepts a standard OpenAI Chat Completions request
-and returns a standard OpenAI Chat Completions response.
+Standard OpenAI Chat Completions request and response. Both streaming
+(`"stream": true`, `text/event-stream`) and non-streaming responses are
+supported — the response shape is decided by your reply in the UI plus the
+`stream` flag in the request.
 
-#### Request headers
+Request body fields recognised: `model`, `messages`, `tools`, `tool_choice`,
+`temperature`, `top_p`, `stream`, plus arbitrary extras (forwarded to the UI
+as request metadata).
 
-| Header          | Required | Description                          |
-|-----------------|----------|--------------------------------------|
-| `Authorization` | No       | `Bearer <api_key>` — validated or ignored depending on config |
-| `Content-Type`  | Yes      | `application/json`                   |
-
-#### Request body
+Reply shape (function-calling):
 
 ```json
 {
-  "model": "my-model",
-  "messages": [
-    { "role": "system",    "content": "You are a helpful assistant..." },
-    { "role": "user",      "content": "...task description..." },
-    { "role": "assistant", "content": "..." },
-    { "role": "user",      "content": "OBSERVATION:\n..." }
-  ],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "bash",
-        "description": "Run a bash command in the sandbox shell.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "command": { "type": "string", "description": "The bash command to run." }
-          },
-          "required": ["command"]
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "<echoed from request>",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "<text you typed, may be null>",
+      "tool_calls": [
+        {
+          "id": "call_xyz",
+          "type": "function",
+          "function": { "name": "bash", "arguments": "{\"command\":\"ls\"}" }
         }
-      }
+      ]
     },
-    {
-      "type": "function",
-      "function": {
-        "name": "submit",
-        "description": "Submit the current patch as the final answer.",
-        "parameters": { "type": "object", "properties": {} }
-      }
-    }
-  ],
-  "tool_choice": "auto",
-  "temperature": 0.0,
-  "top_p": 1.0,
-  "stream": false
+    "finish_reason": "tool_calls"
+  }]
 }
 ```
 
-> **Note:** `tools` and `tool_choice` are only present when
-> `agent.tools.parse_function.type = function_calling` (the default).
-> If you set `type: thought_action`, these fields are omitted and the model
-> should return a plain-text response with the action inside a fenced code block.
+### `POST /v1/messages` &nbsp;·&nbsp; Anthropic-compatible
 
-#### Response body (function-calling mode)
+Standard Anthropic Messages request and response. Streaming and non-streaming
+are both supported (Anthropic's own SSE event sequence is emitted when
+`"stream": true`). Tool use is returned as `content` blocks of type
+`tool_use`.
 
-```json
-{
-  "id": "chatcmpl-abc123",
-  "object": "chat.completion",
-  "created": 1700000000,
-  "model": "my-model",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": null,
-        "tool_calls": [
-          {
-            "id": "call_xyz",
-            "type": "function",
-            "function": {
-              "name": "bash",
-              "arguments": "{\"command\": \"ls -la /repo\"}"
-            }
-          }
-        ]
-      },
-      "finish_reason": "tool_calls"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 512,
-    "completion_tokens": 32,
-    "total_tokens": 544
-  }
-}
-```
+### `GET /`
 
-#### Response body (thought_action mode)
-
-```json
-{
-  "id": "chatcmpl-abc123",
-  "object": "chat.completion",
-  "created": 1700000000,
-  "model": "my-model",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "I'll list the repository contents first.\n\n```\nls -la /repo\n```"
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 512,
-    "completion_tokens": 24,
-    "total_tokens": 536
-  }
-}
-```
+Serves the browser UI (`app/index.html`). Open it in a browser to act as the
+model.
 
 ---
 
-## Minimal Python implementation
+## Error injection
 
-```python
-# main.py  —  run with: uvicorn main:app --host 0.0.0.0 --port 8000
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-import httpx, time, uuid
+Instead of a normal reply, the UI can return a structured error envelope. The
+server applies the right status code and protocol-specific error shape
+(OpenAI vs. Anthropic) automatically.
 
-app = FastAPI()
+### `GET /error-presets`
 
-# Replace with the real backend you want to route to
-BACKEND_URL = "http://your-real-model-backend/v1/chat/completions"
-BACKEND_API_KEY = "your-real-api-key"
+Returns the list of available presets:
 
-
-@app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
-    body = await request.json()
-
-    # --- routing logic goes here ---
-    # e.g. inspect body["model"] or body["messages"] to pick a backend
-    # --------------------------------
-
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            BACKEND_URL,
-            json=body,
-            headers={"Authorization": f"Bearer {BACKEND_API_KEY}"},
-        )
-
-    return JSONResponse(content=resp.json(), status_code=resp.status_code)
+```json
+[
+  { "name": "context_length_exceeded", "label": "Context length exceeded (400)",
+    "status": 400, "type": "invalid_request_error",
+    "code": "context_length_exceeded", "message": "..." },
+  { "name": "rate_limit_exceeded",     "label": "Rate limit exceeded (429)",
+    "status": 429, "headers": { "Retry-After": "20" }, ... },
+  ...
+]
 ```
+
+Built-in presets cover: context-length exceeded, rate limit (RPM/TPM),
+insufficient quota, invalid API key, model not found, invalid tool arguments,
+server overload, internal server error, gateway timeout.
 
 ---
 
-## SWE-agent config reference
+## Internal endpoints (used by the browser UI)
 
-The relevant fields in `config/local_router.yaml`:
+You normally don't call these yourself — they're how `index.html` drives the
+server.
 
-```yaml
-agent:
-  model:
-    name: openai/my-model        # "openai/" prefix → litellm uses OpenAI-compatible protocol
-    api_base: http://localhost:8000
-    api_key: "local-router-key"  # any non-empty string if the router ignores auth
-    per_instance_cost_limit: 0   # must be 0 — litellm can't price unknown models
-    total_cost_limit: 0
-    per_instance_call_limit: 100
-    max_input_tokens: 0          # 0 = disable context-window check
-  tools:
-    parse_function:
-      type: function_calling     # or "thought_action" if backend lacks tool-call support
-  history_processors: []         # remove cache_control — it's Claude-only
+### `GET /events` &nbsp;·&nbsp; SSE
+
+Server-sent events stream. On connect, replays the active session if one
+exists. Event types:
+
+| Event              | Payload                                                |
+| ------------------ | ------------------------------------------------------ |
+| `new_request`      | `{ "id", "body", "session_id" }` — a request is hung   |
+| `session_restored` | full session record (read-only replay on reconnect)    |
+| `ping`             | `{}` — keep-alive every 15s                            |
+
+### `POST /reply/{req_id}`
+
+Resolve a hung request with a normal assistant reply.
+
+```json
+{
+  "content": "<text or null>",
+  "tool_calls": [
+    { "name": "bash", "arguments": { "command": "ls" } }
+  ]
+}
 ```
+
+`tool_calls` is optional. The server formats the response in whichever
+protocol the original request came in on.
+
+### `POST /reply/{req_id}/error`
+
+Resolve a hung request with an error envelope. Body is one of the preset
+objects from `/error-presets` (or any compatible shape).
+
+### `GET /histories`
+
+List past sessions, newest first:
+
+```json
+[
+  { "session_id": "...", "created_at": "...", "preview": "...", "status": "complete" }
+]
+```
+
+### `GET /histories/{session_id}`
+
+Full session record (request body, reply, metadata, timestamps). Persisted
+on disk under `.histories/<session_id>.json`.
+
+---
+
+## Run
+
+```bash
+./start.sh
+# or
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
+```
+
+Source code lives in `app/`. Histories live in `.histories/` at the repo
+root.
