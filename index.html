@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>mymockllm</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; background: #0f1117; color: #e2e8f0; }
+  body { display: flex; flex-direction: column; }
+
+  /* ── Layout ── */
+  #app { flex: 1; display: flex; min-height: 0; gap: 0; }
+
+  /* ── Theme Toggle ── */
+  #theme-toggle {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: transparent;
+    border: 1px solid #2d3748;
+    color: #e2e8f0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    z-index: 10;
+  }
+  #theme-toggle:hover { background: #1a202c; }
+
+  /* Light Theme Overrides */
+  body.light-theme {
+    background: #f7fafc;
+    color: #1a202c;
+  }
+  body.light-theme #messages-panel,
+  body.light-theme #reply-panel h2,
+  body.light-theme #status-bar,
+  body.light-theme #history-accordion {
+    border-color: #e2e8f0;
+  }
+  body.light-theme #messages-panel h2,
+  body.light-theme #reply-panel h2 {
+    color: #4a5568;
+  }
+  body.light-theme #history-toggle {
+    background: #edf2f7;
+    color: #4a5568;
+  }
+  body.light-theme #history-toggle:hover { background: #e2e8f0; }
+  body.light-theme #history-list-wrap { background: #f7fafc; }
+  body.light-theme .hist-item { border-color: #edf2f7; }
+  body.light-theme .hist-item:hover { background: #edf2f7; }
+  body.light-theme .hist-item.active-hist { background: #e6ffed; }
+  body.light-theme .msg-system { background: #edf2f7; border-color: #cbd5e0; }
+  body.light-theme .msg-user { background: #ebf8ff; border-color: #4299e1; }
+  body.light-theme .msg-assistant { background: #f0fff4; border-color: #48bb78; }
+  body.light-theme .msg-tool-call { background: #fffff0; border-color: #ecc94b; }
+  body.light-theme .msg-tool { background: #faf5ff; border-color: #9f7aea; }
+  body.light-theme .msg-meta { background: #f1f5f9; border-color: #cbd5e0; }
+  body.light-theme .msg-meta .msg-label { color: #4a5568; }
+  body.light-theme .msg-meta-key { color: #b7791f; }
+  body.light-theme .msg-meta-val { color: #2d3748; }
+  body.light-theme .msg-meta-val .js { color: #2f855a; }
+  body.light-theme .msg-meta-val .jn { color: #2b6cb0; }
+  body.light-theme .msg-meta-val .jb { color: #6b46c1; }
+  body.light-theme .msg-meta-val .jp { color: #718096; }
+  body.light-theme .msg-meta-val .jk { color: #b7791f; }
+  body.light-theme .msg-meta-val .jpk { color: #000000; font-weight: 700; }
+  body.light-theme #content-input {
+    background: #fff;
+    border-color: #cbd5e0;
+    color: #1a202c;
+  }
+  body.light-theme .tc-card {
+    background: #fff;
+    border-color: #ecc94b;
+  }
+  body.light-theme .tc-name-input,
+  body.light-theme .param-key,
+  body.light-theme .param-val {
+    background: #fff;
+    border-color: #cbd5e0;
+    color: #1a202c;
+  }
+  body.light-theme #theme-toggle {
+    border-color: #cbd5e0;
+    color: #1a202c;
+  }
+  body.light-theme #theme-toggle:hover { background: #edf2f7; }
+
+  /* ── Bottom Toolbar ── */
+  #bottom-bar {
+    flex-shrink: 0;
+    height: 48px;
+    background: #0a0c12;
+    border-top: 1px solid #2d3748;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 0 16px;
+    position: relative;
+    z-index: 30;
+  }
+  body.light-theme #bottom-bar {
+    background: #f1f5f9;
+    border-top-color: #e2e8f0;
+  }
+
+  /* ── Bottom Toolbar ── */
+  #bottom-bar {
+    flex-shrink: 0;
+    height: 48px;
+    background: #0a0c12;
+    border-top: 1px solid #2d3748;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 0 16px;
+    position: relative;
+    z-index: 30;
+  }
+  body.light-theme #bottom-bar {
+    background: #f1f5f9;
+    border-top-color: #e2e8f0;
+  }
+
+  /* ── Error Injector (lives inside #bottom-bar) ── */
+  #err-injector {
+    position: relative;
+    font-size: 12px;
+  }
+  #err-toggle {
+    background: #2d1111;
+    color: #fca5a5;
+    border: 1px solid #ef4444;
+    border-radius: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+  #err-toggle:hover { background: #3d1818; }
+  #err-toggle:disabled { opacity: .4; cursor: not-allowed; }
+  #err-panel {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: 44px;
+    width: 360px;
+    background: #1a1010;
+    border: 1px solid #ef4444;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+    flex-direction: column;
+    gap: 8px;
+    z-index: 40;
+  }  #err-panel.open { display: flex; }
+  #err-panel label {
+    font-size: 11px;
+    color: #fca5a5;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  #err-panel select,
+  #err-panel input,
+  #err-panel textarea {
+    background: #0f0606;
+    border: 1px solid #7f1d1d;
+    color: #fecaca;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+  }
+  #err-panel select:focus,
+  #err-panel input:focus,
+  #err-panel textarea:focus { border-color: #ef4444; }
+  #err-panel textarea { resize: vertical; min-height: 60px; font-family: 'Fira Code', monospace; }
+  .err-row { display: flex; gap: 6px; }
+  .err-row > div { flex: 1; }
+  #err-send {
+    background: #dc2626;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  #err-send:hover { background: #b91c1c; }
+  #err-send:disabled { opacity: .4; cursor: not-allowed; }
+  body.light-theme #err-toggle {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+  body.light-theme #err-panel {
+    background: #fff5f5;
+  }
+  body.light-theme #err-panel select,
+  body.light-theme #err-panel input,
+  body.light-theme #err-panel textarea {
+    background: #fff;
+    color: #7f1d1d;
+    border-color: #fecaca;
+  }
+
+  /* ── Messages panel ── */
+  #messages-panel {
+    flex: 1 1 55%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #2d3748;
+    overflow: hidden;
+  }
+  #messages-panel h2 {
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #718096;
+    border-bottom: 1px solid #2d3748;
+    flex-shrink: 0;
+  }
+
+  /* ── History accordion ── */
+  #history-accordion {
+    flex-shrink: 0;
+    border-bottom: 1px solid #2d3748;
+  }
+  #history-toggle {
+    width: 100%;
+    background: #161b27;
+    border: none;
+    color: #718096;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .15s;
+  }
+  #history-toggle:hover { background: #1a2030; }
+  #history-toggle .arrow { transition: transform .2s; display: inline-block; }
+  #history-toggle.open .arrow { transform: rotate(90deg); }
+  #history-list-wrap {
+    display: none;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #0f1117;
+  }
+  #history-list-wrap.open { display: block; }
+  .hist-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #1a202c;
+    transition: background .12s;
+  }
+  .hist-item:hover { background: #1a202c; }
+  .hist-item.active-hist { background: #14291f; }
+  .hist-num { color: #4a5568; font-size: 11px; min-width: 22px; }
+  .hist-time { color: #4a5568; font-size: 11px; min-width: 80px; }
+  .hist-preview { flex: 1; color: #a0aec0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .hist-badge.pending  { background: #2d1f0e; color: #f59e0b; }
+  .hist-badge.complete { background: #14291f; color: #4ade80; }
+  .hist-empty { color: #4a5568; font-size: 12px; padding: 10px 16px; }
+
+  #messages-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* ── Message bubble ── */
+  .msg {
+    border-radius: 8px;
+    padding: 10px 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+  }
+  .msg-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    opacity: .75;
+  }
+  /* role colors */
+  .msg-system    { background: #1a202c; border-color: #4a5568; }
+  .msg-system    .msg-label { color: #718096; }
+  .msg-user      { background: #1a2744; border-color: #3b82f6; }
+  .msg-user      .msg-label { color: #60a5fa; }
+  .msg-assistant { background: #14291f; border-color: #22c55e; }
+  .msg-assistant .msg-label { color: #4ade80; }
+  .msg-tool-call { background: #2d1f0e; border-color: #f59e0b; }
+  .msg-tool-call .msg-label { color: #fbbf24; }
+  .msg-tool      { background: #1f1a2d; border-color: #a78bfa; }
+  .msg-tool      .msg-label { color: #c4b5fd; }
+
+  /* request metadata block (top of messages list) */
+  .msg-meta { background: #14171f; border-color: #2d3748; }
+  .msg-meta .msg-label { color: #a0aec0; }
+  .msg-meta-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  .msg-meta-key { color: #fbbf24; white-space: nowrap; }
+  .msg-meta-val { color: #cbd5e0; word-break: break-word; white-space: pre-wrap; }
+  .msg-meta-val .js { color: #4ade80; }
+  .msg-meta-val .jn { color: #60a5fa; }
+  .msg-meta-val .jb { color: #c4b5fd; }
+  .msg-meta-val .jp { color: #718096; }
+  .msg-meta-val .jk { color: #fbbf24; }
+  .msg-meta-val .jpk { color: #ffffff; font-weight: 700; }
+
+  .tool-call-name {
+    font-weight: 700;
+    color: #fbbf24;
+    margin-bottom: 4px;
+  }
+  .tool-call-args {
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    background: #1a1208;
+    border-radius: 4px;
+    padding: 6px 8px;
+    color: #fde68a;
+  }
+
+  /* ── Reply panel ── */
+  #reply-panel {
+    flex: 0 0 45%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #reply-panel h2 {
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #718096;
+    border-bottom: 1px solid #2d3748;
+    flex-shrink: 0;
+  }
+  #reply-inner {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* ── Waiting / active state ── */
+  #status-bar {
+    padding: 8px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid #2d3748;
+    flex-shrink: 0;
+  }
+  .status-waiting { color: #f59e0b; }
+  .status-idle    { color: #4a5568; }
+  .status-sent    { color: #22c55e; }
+
+  /* ── Text reply area ── */
+  #content-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  #content-input {
+    flex: 1;
+    background: #1a202c;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  #content-input:focus { border-color: #4ade80; }
+  #content-input::placeholder { color: #4a5568; }
+
+  /* ── Add tool call button ── */
+  .btn-add-tc {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    border: 1px dashed #f59e0b;
+    background: transparent;
+    color: #f59e0b;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+  }
+  .btn-add-tc:hover { background: #2d1f0e; }
+
+  /* ── Tool call card ── */
+  .tc-card {
+    background: #1e1508;
+    border: 1px solid #f59e0b44;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+  }
+  .tc-schema-popover {
+    display: none;
+    position: fixed;
+    width: 360px;
+    max-height: 70vh;
+    overflow: auto;
+    background: #0f1117;
+    border: 1px solid #f59e0b88;
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5);
+    font-size: 11px;
+    color: #e2e8f0;
+    z-index: 9999;
+  }
+  .tc-card.show-schema .tc-schema-popover { display: block; }
+  .tc-schema-popover .schema-title {
+    font-weight: 700;
+    color: #f59e0b;
+    font-size: 12px;
+    margin-bottom: 4px;
+    word-break: break-all;
+  }
+  .tc-schema-popover .schema-desc {
+    color: #a0aec0;
+    font-style: italic;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .tc-schema-popover pre {
+    margin: 0;
+    background: transparent;
+    color: #cbd5e0;
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .tc-schema-popover pre .jk { color: #fbbf24; }       /* key */
+  .tc-schema-popover pre .jpk { color: #ffffff; font-weight: 700; } /* property name (under "properties") */
+  .tc-schema-popover pre .js { color: #4ade80; }       /* string */
+  .tc-schema-popover pre .jn { color: #60a5fa; }       /* number */
+  .tc-schema-popover pre .jb { color: #c4b5fd; }       /* boolean / null */
+  .tc-schema-popover pre .jp { color: #718096; }       /* punctuation */
+  body.light-theme .tc-schema-popover {
+    background: #fffaf0;
+    color: #1a202c;
+    border-color: #f6ad55;
+  }
+  body.light-theme .tc-schema-popover .schema-desc { color: #4a5568; }
+  body.light-theme .tc-schema-popover pre { color: #2d3748; }
+  body.light-theme .tc-schema-popover pre .jk { color: #b7791f; }
+  body.light-theme .tc-schema-popover pre .jpk { color: #000000; font-weight: 700; }
+  body.light-theme .tc-schema-popover pre .js { color: #2f855a; }
+  body.light-theme .tc-schema-popover pre .jn { color: #2b6cb0; }
+  body.light-theme .tc-schema-popover pre .jb { color: #6b46c1; }
+  body.light-theme .tc-schema-popover pre .jp { color: #718096; }
+  .tc-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tc-name-input {
+    flex: 1;
+    background: #0f1117;
+    border: 1px solid #f59e0b66;
+    border-radius: 5px;
+    color: #fbbf24;
+    padding: 5px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+  }
+  .tc-name-input:focus { border-color: #f59e0b; }
+  .tc-name-input::placeholder { color: #78350f; font-weight: 400; }
+
+  .btn-remove {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .btn-remove:hover { background: #2d1111; }
+
+  /* ── Params list ── */
+  .tc-params { display: flex; flex-direction: column; gap: 6px; }
+  .param-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .param-key {
+    width: 120px;
+    flex-shrink: 0;
+    background: #0f1117;
+    border: 1px solid #2d3748;
+    border-radius: 5px;
+    color: #a78bfa;
+    padding: 4px 7px;
+    font-size: 12px;
+    outline: none;
+  }
+  .param-key:focus { border-color: #a78bfa; }
+  .param-key::placeholder { color: #4a5568; }
+  .param-val {
+    flex: 1;
+    background: #0f1117;
+    border: 1px solid #2d3748;
+    border-radius: 5px;
+    color: #e2e8f0;
+    padding: 4px 7px;
+    font-size: 12px;
+    font-family: 'Fira Code', monospace;
+    outline: none;
+  }
+  .param-val:focus { border-color: #a78bfa; }
+  .param-val::placeholder { color: #4a5568; }
+  .btn-add-param {
+    font-size: 12px;
+    color: #a78bfa;
+    background: transparent;
+    border: 1px dashed #a78bfa66;
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+  .btn-add-param:hover { background: #1f1a2d; }
+
+  /* ── Send button ── */
+  #send-btn {
+    align-self: flex-end;
+    padding: 9px 28px;
+    background: #22c55e;
+    color: #0f1117;
+    font-weight: 700;
+    font-size: 14px;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+  }
+  #send-btn:hover { background: #16a34a; }
+  #send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+
+  /* ── Empty state ── */
+  .empty-hint {
+    color: #4a5568;
+    font-size: 13px;
+    text-align: center;
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+<button id="theme-toggle">🌞 Light</button>
+<div id="app">
+
+  <!-- ── Left: messages ── -->
+  <div id="messages-panel">
+    <h2>📨 Conversation</h2>
+
+    <!-- History accordion -->
+    <div id="history-accordion">
+      <button id="history-toggle">
+        <span class="arrow">▶</span> History
+        <span id="history-count" style="color:#4a5568;font-weight:400;margin-left:4px"></span>
+      </button>
+      <div id="history-list-wrap">
+        <div id="history-list"><p class="hist-empty">No history yet.</p></div>
+      </div>
+    </div>
+
+    <div id="messages-list">
+      <p class="empty-hint">Waiting for SWE-agent to send a request…</p>
+    </div>
+  </div>
+
+  <!-- ── Right: reply ── -->
+  <div id="reply-panel">
+    <h2>✏️ Your Reply (as assistant)</h2>
+    <div id="status-bar" class="status-idle">Idle — no pending request</div>
+    <div id="reply-inner">
+
+      <!-- text content row -->
+      <div id="content-row">
+        <textarea id="content-input" placeholder="Type assistant content here (optional if replying with tool calls only)…"></textarea>
+        <button class="btn-add-tc" id="add-tc-btn" title="Add a tool call">＋</button>
+      </div>
+
+      <!-- tool call cards injected here -->
+      <div id="tc-list"></div>
+
+      <button id="send-btn" disabled>Send Reply</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Bottom Toolbar ── -->
+<div id="bottom-bar">
+  <!-- ── Error Injector ── -->
+  <div id="err-injector">
+    <div id="err-panel">
+    <div>
+      <label>Preset</label>
+      <select id="err-preset"></select>
+    </div>
+    <div class="err-row">
+      <div>
+        <label>HTTP Status</label>
+        <input id="err-status" type="number" min="400" max="599" />
+      </div>
+      <div>
+        <label>Type</label>
+        <input id="err-type" type="text" />
+      </div>
+    </div>
+    <div>
+      <label>Code</label>
+      <input id="err-code" type="text" />
+    </div>
+    <div>
+      <label>Message</label>
+      <textarea id="err-message"></textarea>
+    </div>
+    <div>
+      <label>Headers (JSON, optional)</label>
+      <textarea id="err-headers" placeholder='{"Retry-After": "20"}'></textarea>
+    </div>
+    <button id="err-send" disabled>💥 Send Error Response</button>
+  </div>
+  <button id="err-toggle" disabled>⚠ Inject Error</button>
+  </div>
+</div>
+
+<script>
+// ── Error Injector ────────────────────────────────────────────────────────
+const errToggleBtn = document.getElementById('err-toggle');
+const errPanel     = document.getElementById('err-panel');
+const errPresetSel = document.getElementById('err-preset');
+const errStatusIn  = document.getElementById('err-status');
+const errTypeIn    = document.getElementById('err-type');
+const errCodeIn    = document.getElementById('err-code');
+const errMessageIn = document.getElementById('err-message');
+const errHeadersIn = document.getElementById('err-headers');
+const errSendBtn   = document.getElementById('err-send');
+
+let errorPresets = [];
+
+async function loadErrorPresets() {
+  try {
+    const res = await fetch('/error-presets');
+    errorPresets = await res.json();
+    errPresetSel.innerHTML = errorPresets
+      .map((p, i) => `<option value="${i}">${escHtml(p.label)}</option>`)
+      .join('');
+    applyPreset(0);
+  } catch (e) {
+    console.warn('Failed to load error presets', e);
+  }
+}
+
+function applyPreset(idx) {
+  const p = errorPresets[idx];
+  if (!p) return;
+  errStatusIn.value  = p.status ?? 500;
+  errTypeIn.value    = p.type ?? '';
+  errCodeIn.value    = p.code ?? '';
+  errMessageIn.value = p.message ?? '';
+  errHeadersIn.value = p.headers ? JSON.stringify(p.headers, null, 2) : '';
+}
+
+errPresetSel.addEventListener('change', () => applyPreset(Number(errPresetSel.value)));
+
+errToggleBtn.addEventListener('click', () => {
+  errPanel.classList.toggle('open');
+});
+
+errSendBtn.addEventListener('click', async () => {
+  if (!currentReqId) return;
+  let headers = null;
+  const hdrTxt = errHeadersIn.value.trim();
+  if (hdrTxt) {
+    try { headers = JSON.parse(hdrTxt); }
+    catch { alert('Headers must be valid JSON'); return; }
+  }
+  const payload = {
+    status: Number(errStatusIn.value) || 500,
+    type: errTypeIn.value.trim() || 'server_error',
+    code: errCodeIn.value.trim() || null,
+    message: errMessageIn.value,
+    headers,
+  };
+
+  errSendBtn.disabled = true;
+  try {
+    await fetch(`/reply/${currentReqId}/error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    setStatus('sent', `💥 Error ${payload.status} sent — waiting for next request…`);
+    currentReqId = null;
+    document.getElementById('send-btn').disabled = true;
+    errPanel.classList.remove('open');
+    updateErrButtonState();
+  } catch (err) {
+    setStatus('waiting', `❌ Error sending error: ${err.message}`);
+    errSendBtn.disabled = false;
+  }
+});
+
+function updateErrButtonState() {
+  const enabled = !!currentReqId;
+  errToggleBtn.disabled = !enabled;
+  errSendBtn.disabled   = !enabled;
+  if (!enabled) errPanel.classList.remove('open');
+}
+
+loadErrorPresets();
+
+// ── Theme Toggle ──────────────────────────────────────────────────────────
+const THEME_KEY = 'mymockllm.theme';
+const themeBtn = document.getElementById('theme-toggle');
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.body.classList.add('light-theme');
+    themeBtn.textContent = '🌙 Dark';
+  } else {
+    document.body.classList.remove('light-theme');
+    themeBtn.textContent = '🌞 Light';
+  }
+}
+
+// Load saved preference
+applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+themeBtn.addEventListener('click', () => {
+  const isLight = document.body.classList.contains('light-theme');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+});
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentReqId = null;
+let viewingHistory = false; // true when messages panel shows a historical session
+let currentAvailableTools = [];
+let autoIdSeq = 0;
+const VALUE_HISTORY_STORAGE_KEY = 'mymockllm.valueHistory.v1';
+
+function nextAutoId(prefix = 'id') {
+  autoIdSeq += 1;
+  return `${prefix}-${autoIdSeq}`;
+}
+
+function getToolNames() {
+  return currentAvailableTools.map(t => t.function?.name).filter(Boolean);
+}
+
+function getToolSchema(toolName) {
+  return currentAvailableTools.find(t => t.function?.name === toolName)?.function || null;
+}
+
+function getToolParamEntries(toolName) {
+  const fn = getToolSchema(toolName);
+  if (!fn || !fn.parameters || !fn.parameters.properties) return [];
+  return Object.entries(fn.parameters.properties);
+}
+
+function getRequiredParamNames(toolName) {
+  const fn = getToolSchema(toolName);
+  return (fn && fn.parameters && fn.parameters.required) || [];
+}
+
+function loadValueHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(VALUE_HISTORY_STORAGE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveValueHistory(history) {
+  localStorage.setItem(VALUE_HISTORY_STORAGE_KEY, JSON.stringify(history));
+}
+
+function rememberValueForKey(key, value) {
+  const cleanKey = String(key || '').trim();
+  const cleanValue = String(value || '').trim();
+  if (!cleanKey || !cleanValue) return;
+
+  const history = loadValueHistory();
+  const list = Array.isArray(history[cleanKey]) ? history[cleanKey] : [];
+  const next = [cleanValue, ...list.filter(v => v !== cleanValue)].slice(0, 12);
+  history[cleanKey] = next;
+  saveValueHistory(history);
+}
+
+function getRememberedValues(key) {
+  const history = loadValueHistory();
+  return Array.isArray(history[key]) ? history[key] : [];
+}
+
+// ── History accordion ──────────────────────────────────────────────────────
+const histToggle = document.getElementById('history-toggle');
+const histWrap   = document.getElementById('history-list-wrap');
+
+histToggle.addEventListener('click', () => {
+  const open = histWrap.classList.toggle('open');
+  histToggle.classList.toggle('open', open);
+});
+
+// Load history list on page load
+async function loadHistoryList() {
+  try {
+    const res = await fetch('/histories');
+    const sessions = await res.json();
+    renderHistoryList(sessions);
+  } catch (e) {
+    console.warn('Failed to load history list', e);
+  }
+}
+
+function renderHistoryList(sessions) {
+  const list = document.getElementById('history-list');
+  const count = document.getElementById('history-count');
+  count.textContent = sessions.length ? `(${sessions.length})` : '';
+  if (!sessions.length) {
+    list.innerHTML = '<p class="hist-empty">No history yet.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  sessions.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'hist-item';
+    el.dataset.sessionId = s.session_id;
+    const dt = new Date(s.created_at);
+    const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    el.innerHTML = `
+      <span class="hist-num">#${sessions.length - i}</span>
+      <span class="hist-time">${timeStr}</span>
+      <span class="hist-preview">${escHtml(s.preview)}</span>
+      <span class="hist-badge ${s.status}">${s.status}</span>
+    `;
+    el.addEventListener('click', () => viewSession(s.session_id));
+    list.appendChild(el);
+  });
+}
+
+function prependHistoryItem(s, total) {
+  const list = document.getElementById('history-list');
+  const count = document.getElementById('history-count');
+  // Remove empty hint if present
+  const empty = list.querySelector('.hist-empty');
+  if (empty) empty.remove();
+
+  // Re-number existing items
+  list.querySelectorAll('.hist-num').forEach((el, i) => {
+    el.textContent = `#${total - i - 1}`;
+  });
+
+  const el = document.createElement('div');
+  el.className = 'hist-item';
+  el.dataset.sessionId = s.session_id;
+  const dt = new Date(s.created_at);
+  const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.innerHTML = `
+    <span class="hist-num">#${total}</span>
+    <span class="hist-time">${timeStr}</span>
+    <span class="hist-preview">${escHtml(s.preview)}</span>
+    <span class="hist-badge ${s.status}">${s.status}</span>
+  `;
+  el.addEventListener('click', () => viewSession(s.session_id));
+  list.prepend(el);
+  count.textContent = `(${total})`;
+}
+
+function updateHistoryItemStatus(sessionId, status) {
+  const el = document.querySelector(`.hist-item[data-session-id="${sessionId}"]`);
+  if (!el) return;
+  const badge = el.querySelector('.hist-badge');
+  if (badge) { badge.className = `hist-badge ${status}`; badge.textContent = status; }
+}
+
+async function viewSession(sessionId) {
+  try {
+    const res = await fetch(`/histories/${sessionId}`);
+    if (!res.ok) return;
+    const session = await res.json();
+    viewingHistory = true;
+    renderMessages(session.messages || [], session.tools || [], session.raw_request || session);
+    setStatus('idle', `📖 Viewing history — ${new Date(session.created_at).toLocaleString()} [${session.status}]`);
+    // Highlight active item
+    document.querySelectorAll('.hist-item').forEach(el => {
+      el.classList.toggle('active-hist', el.dataset.sessionId === sessionId);
+    });
+  } catch (e) {
+    console.warn('Failed to load session', e);
+  }
+}
+
+loadHistoryList();
+
+// ── SSE ────────────────────────────────────────────────────────────────────
+const evtSource = new EventSource('/events');
+
+evtSource.addEventListener('new_request', e => {
+  const { id, body, session_id } = JSON.parse(e.data);
+  currentReqId = id;
+  viewingHistory = false;
+  renderMessages(body.messages || [], body.tools || [], body);
+  setStatus('waiting', `⏳ Pending request ${id.slice(0, 8)}… — compose your reply and click Send`);
+  document.getElementById('send-btn').disabled = false;
+  updateErrButtonState();
+
+  // Add to history list (pending)
+  const total = document.querySelectorAll('.hist-item').length + 1;
+  prependHistoryItem({
+    session_id,
+    created_at: new Date().toISOString(),
+    preview: _extractPreview(body.messages || []),
+    status: 'pending',
+  }, total);
+});
+
+evtSource.addEventListener('session_restored', e => {
+  const session = JSON.parse(e.data);
+  viewingHistory = false;
+  renderMessages(session.messages || [], session.tools || [], session.raw_request || session);
+  setStatus('idle', `🔄 Restored — already replied (${new Date(session.created_at).toLocaleString()})`);
+  document.getElementById('send-btn').disabled = true;
+  currentReqId = null;
+  updateErrButtonState();
+});
+
+evtSource.addEventListener('session_updated', e => {
+  const { session_id, status } = JSON.parse(e.data);
+  updateHistoryItemStatus(session_id, status);
+});
+
+evtSource.addEventListener('ping', () => {});
+
+function _extractPreview(messages) {
+  for (const m of messages) {
+    if (m.role === 'user') {
+      const c = m.content || '';
+      if (typeof c === 'string') return c.slice(0, 60);
+      if (Array.isArray(c)) return (c.find(b => b.type === 'text')?.text || '').slice(0, 60);
+    }
+  }
+  return '(no user message)';
+}
+
+// ── Render messages ────────────────────────────────────────────────────────
+function renderMessages(messages, tools, meta) {
+  currentAvailableTools = Array.isArray(tools) ? tools : [];
+
+  const list = document.getElementById('messages-list');
+  list.innerHTML = '';
+
+  // Show request metadata (model, max_tokens, temperature, stream, tool_choice, …)
+  if (meta && typeof meta === 'object') {
+    const metaEntries = Object.entries(meta).filter(([k]) =>
+      k !== 'messages' && k !== 'tools' && k !== 'system'
+    );
+    if (metaEntries.length) {
+      const el = document.createElement('div');
+      el.className = 'msg msg-meta';
+      const rows = metaEntries.map(([k, v]) => {
+        let valHtml;
+        if (v === null || v === undefined) {
+          valHtml = '<span class="jb">null</span>';
+        } else if (typeof v === 'string') {
+          valHtml = `<span class="js">${escHtml(JSON.stringify(v))}</span>`;
+        } else if (typeof v === 'number' || typeof v === 'bigint') {
+          valHtml = `<span class="jn">${escHtml(String(v))}</span>`;
+        } else if (typeof v === 'boolean') {
+          valHtml = `<span class="jb">${escHtml(String(v))}</span>`;
+        } else {
+          valHtml = renderJsonHtml(v, 0, null);
+        }
+        return `<div class="msg-meta-key">${escHtml(k)}</div><div class="msg-meta-val">${valHtml}</div>`;
+      }).join('');
+      el.innerHTML = `<div class="msg-label">Request metadata</div><div class="msg-meta-grid">${rows}</div>`;
+      list.appendChild(el);
+    }
+  }
+
+  // Show available tools as a small info block
+  if (tools && tools.length) {
+    const el = document.createElement('div');
+    el.className = 'msg msg-system';
+
+    const toolsHtml = tools.map(t => {
+      const fn = t.function;
+      const schemaHtml = fn.parameters
+        ? `<div style="margin-top:5px;padding-left:10px;border-left:2px solid #4a5568">${renderSchema(fn.parameters)}</div>`
+        : '';
+
+      return `<div style="margin-bottom:8px">
+        <span style="color:#fbbf24;font-weight:600;font-family:monospace">${escHtml(fn.name)}</span>
+        <span style="color:#718096"> — ${escHtml(fn.description || '')}</span>
+        ${schemaHtml}
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `<div class="msg-label">Available tools</div>${toolsHtml}`;
+    list.appendChild(el);
+  }
+
+  for (const msg of messages) {
+    const el = document.createElement('div');
+
+    if (msg.role === 'system') {
+      el.className = 'msg msg-system';
+      el.innerHTML = `<div class="msg-label">system</div>${escHtml(extractContent(msg.content))}`;
+
+    } else if (msg.role === 'user') {
+      el.className = 'msg msg-user';
+      el.innerHTML = `<div class="msg-label">user</div>${escHtml(extractContent(msg.content))}`;
+
+    } else if (msg.role === 'assistant') {
+      if (msg.tool_calls && msg.tool_calls.length) {
+        el.className = 'msg msg-tool-call';
+        const calls = msg.tool_calls.map(tc => {
+          let argsStr = tc.function.arguments || '{}';
+          try { argsStr = JSON.stringify(JSON.parse(argsStr), null, 2); } catch {}
+          return `<div class="tool-call-name">⚙ ${escHtml(tc.function.name)}</div><div class="tool-call-args">${escHtml(argsStr)}</div>`;
+        }).join('<hr style="border-color:#3d2a0a;margin:6px 0">');
+        el.innerHTML = `<div class="msg-label">assistant · tool calls</div>${calls}`;
+      } else {
+        el.className = 'msg msg-assistant';
+        el.innerHTML = `<div class="msg-label">assistant</div>${escHtml(extractContent(msg.content))}`;
+      }
+
+    } else if (msg.role === 'tool') {
+      el.className = 'msg msg-tool';
+      const name = msg.name || msg.tool_call_id || 'tool result';
+      el.innerHTML = `<div class="msg-label">tool result · ${escHtml(name)}</div>${escHtml(extractContent(msg.content))}`;
+    }
+
+    list.appendChild(el);
+  }
+
+  // Scroll to bottom
+  list.scrollTop = list.scrollHeight;
+}
+
+// ── Tool call cards ────────────────────────────────────────────────────────
+document.getElementById('add-tc-btn').addEventListener('click', () => addToolCallCard());
+
+function addToolCallCard(name = '', params = []) {
+  const tcList = document.getElementById('tc-list');
+  const card = document.createElement('div');
+  card.className = 'tc-card';
+
+  const toolListId = nextAutoId('tool-list');
+  card.innerHTML = `
+    <div class="tc-header">
+      <input class="tc-name-input" list="${toolListId}" type="text" placeholder="tool name (e.g. bash)" value="${escAttr(name)}" />
+      <datalist id="${toolListId}"></datalist>
+      <button class="btn-remove" title="Remove this tool call">✕</button>
+    </div>
+    <div class="tc-params"></div>
+    <button class="btn-add-param">＋ Add parameter</button>
+    <div class="tc-schema-popover"></div>
+  `;
+
+  const nameInput = card.querySelector('.tc-name-input');
+  const toolList = card.querySelector(`#${toolListId}`);
+  const paramsContainer = card.querySelector('.tc-params');
+  const schemaPopover = card.querySelector('.tc-schema-popover');
+
+  refreshToolNameOptions(toolList);
+
+  card.querySelector('.btn-remove').addEventListener('click', () => card.remove());
+  card.querySelector('.btn-add-param').addEventListener('click', () => addParamRow(card, paramsContainer));
+
+  nameInput.addEventListener('input', () => {
+    syncToolCardToSchema(card);
+    updateSchemaPopover(card);
+  });
+  nameInput.addEventListener('change', () => {
+    syncToolCardToSchema(card);
+    updateSchemaPopover(card);
+  });
+
+  // Show schema popover while focus is inside the card OR the mouse is over the popover
+  card._schemaHovered = false;
+  card._schemaPinned = false;
+  function maybeHideSchema() {
+    if (card._schemaPinned) return;
+    if (card._schemaHovered) return;
+    if (document.activeElement && card.contains(document.activeElement)) return;
+    card.classList.remove('focus-within-card');
+    card.classList.remove('show-schema');
+  }
+  card.addEventListener('focusin', () => {
+    updateSchemaPopover(card);
+    card.classList.add('focus-within-card');
+    refreshSchemaVisibility(card);
+  });
+  card.addEventListener('focusout', () => {
+    // Defer so document.activeElement reflects the new focus target.
+    setTimeout(maybeHideSchema, 0);
+  });
+  schemaPopover.addEventListener('mouseenter', () => {
+    card._schemaHovered = true;
+  });
+  schemaPopover.addEventListener('mouseleave', () => {
+    card._schemaHovered = false;
+    maybeHideSchema();
+  });
+  // Clicking anywhere inside the popover pins it: stays open until the user clicks outside the card+popover.
+  schemaPopover.addEventListener('mousedown', () => {
+    card._schemaPinned = true;
+    refreshSchemaVisibility(card);
+  });
+
+  if (params.length) {
+    for (const [k, v] of params) {
+      const displayValue = typeof v === 'string' ? v : JSON.stringify(v);
+      addParamRow(card, paramsContainer, k, displayValue);
+    }
+  } else {
+    syncToolCardToSchema(card);
+  }
+
+  tcList.appendChild(card);
+}
+
+function updateSchemaPopover(card) {
+  const popover = card.querySelector('.tc-schema-popover');
+  if (!popover) return;
+  const toolName = card.querySelector('.tc-name-input').value.trim();
+  const schema = toolName ? getToolSchema(toolName) : null;
+  if (!schema) {
+    popover.innerHTML = '';
+    refreshSchemaVisibility(card);
+    return;
+  }
+  const desc = schema.description ? `<div class="schema-desc">${escHtml(schema.description)}</div>` : '';
+  const paramsHtml = schema.parameters ? renderJsonHtml(schema.parameters, 0, null) : '<span class="jp">(no parameters)</span>';
+  popover.innerHTML = `
+    <div class="schema-title">${escHtml(schema.name || toolName)}</div>
+    ${desc}
+    <pre>${paramsHtml}</pre>
+  `;
+  refreshSchemaVisibility(card);
+}
+
+// JSON renderer with syntax-coloured spans (.jk key / .jpk property-name / .js string / .jn number / .jb bool|null / .jp punctuation)
+function renderJsonHtml(value, indent = 0, parentKey = null) {
+  const pad = '  '.repeat(indent);
+  const padNext = '  '.repeat(indent + 1);
+  const p = (cls, txt) => `<span class="${cls}">${escHtml(txt)}</span>`;
+  if (value === null) return p('jb', 'null');
+  const t = typeof value;
+  if (t === 'string') return p('js', JSON.stringify(value));
+  if (t === 'number' || t === 'bigint') return p('jn', String(value));
+  if (t === 'boolean') return p('jb', String(value));
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `${p('jp', '[')}${p('jp', ']')}`;
+    const items = value.map(v => `${padNext}${renderJsonHtml(v, indent + 1, null)}`).join(p('jp', ',') + '\n');
+    return `${p('jp', '[')}\n${items}\n${pad}${p('jp', ']')}`;
+  }
+  if (t === 'object') {
+    const keys = Object.keys(value);
+    if (keys.length === 0) return `${p('jp', '{')}${p('jp', '}')}`;
+    const useParamKey = parentKey === 'properties';
+    const items = keys.map(k => {
+      const keyCls = useParamKey ? 'jpk' : 'jk';
+      const keyStr = p(keyCls, JSON.stringify(k));
+      return `${padNext}${keyStr}${p('jp', ':')} ${renderJsonHtml(value[k], indent + 1, k)}`;
+    }).join(p('jp', ',') + '\n');
+    return `${p('jp', '{')}\n${items}\n${pad}${p('jp', '}')}`;
+  }
+  return p('js', JSON.stringify(String(value)));
+}
+
+function refreshSchemaVisibility(card) {
+  const toolName = card.querySelector('.tc-name-input').value.trim();
+  const hasSchema = !!(toolName && getToolSchema(toolName));
+  const focused = card.classList.contains('focus-within-card');
+  const pinned = !!card._schemaPinned;
+  const show = hasSchema && (focused || pinned);
+  card.classList.toggle('show-schema', show);
+  if (show) positionSchemaPopover(card);
+}
+
+// Install once: clicking outside a pinned card+popover unpins and hides it.
+if (!window.__schemaPinOutsideHandlerInstalled) {
+  window.__schemaPinOutsideHandlerInstalled = true;
+  document.addEventListener('mousedown', (e) => {
+    document.querySelectorAll('.tc-card').forEach((card) => {
+      if (!card._schemaPinned) return;
+      const popover = card.querySelector('.tc-schema-popover');
+      const insideCard = card.contains(e.target);
+      const insidePopover = popover && popover.contains(e.target);
+      if (insideCard || insidePopover) return;
+      card._schemaPinned = false;
+      card.classList.remove('focus-within-card');
+      card.classList.remove('show-schema');
+    });
+  }, true);
+}
+
+function positionSchemaPopover(card) {
+  const popover = card.querySelector('.tc-schema-popover');
+  if (!popover) return;
+  const cardRect = card.getBoundingClientRect();
+  const popWidth = 360;
+  const margin = 8;
+  // Prefer left side of the card; fall back to right if there's not enough room.
+  let left = cardRect.left - popWidth - margin;
+  if (left < margin) left = Math.min(window.innerWidth - popWidth - margin, cardRect.right + margin);
+  let top = cardRect.top;
+  const maxTop = window.innerHeight - margin - 60;
+  if (top > maxTop) top = maxTop;
+  if (top < margin) top = margin;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
+// Reposition any visible schema popover on scroll / resize.
+window.addEventListener('scroll', () => {
+  document.querySelectorAll('.tc-card.show-schema').forEach(positionSchemaPopover);
+}, true);
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.tc-card.show-schema').forEach(positionSchemaPopover);
+});
+
+function refreshToolNameOptions(datalistEl) {
+  datalistEl.innerHTML = getToolNames().map(name => `<option value="${escAttr(name)}"></option>`).join('');
+}
+
+function syncToolCardToSchema(card) {
+  const toolName = card.querySelector('.tc-name-input').value.trim();
+  const paramsContainer = card.querySelector('.tc-params');
+  const requiredNames = getRequiredParamNames(toolName);
+  const existingRows = Array.from(paramsContainer.querySelectorAll('.param-row'));
+  const existingKeys = new Set(existingRows.map(row => row.querySelector('.param-key').value.trim()).filter(Boolean));
+
+  for (const key of requiredNames) {
+    if (!existingKeys.has(key)) {
+      addParamRow(card, paramsContainer, key, '');
+    }
+  }
+
+  paramsContainer.querySelectorAll('.param-row').forEach(row => refreshParamSuggestions(card, row));
+}
+
+function addParamRow(card, container, key = '', val = '') {
+  const row = document.createElement('div');
+  row.className = 'param-row';
+
+  const keyListId = nextAutoId('param-key-list');
+  const valueListId = nextAutoId('param-value-list');
+
+  row.innerHTML = `
+    <input class="param-key" list="${keyListId}" type="text" placeholder="key" value="${escAttr(key)}" />
+    <datalist id="${keyListId}"></datalist>
+    <input class="param-val" list="${valueListId}" type="text" placeholder="value (string or JSON)" value="${escAttr(val)}" />
+    <datalist id="${valueListId}"></datalist>
+    <button class="btn-remove" title="Remove">✕</button>
+  `;
+
+  row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+  row.querySelector('.param-key').addEventListener('input', () => refreshParamSuggestions(card, row));
+  row.querySelector('.param-key').addEventListener('change', () => refreshParamSuggestions(card, row));
+  row.querySelector('.param-val').addEventListener('focus', () => refreshParamSuggestions(card, row));
+  row.querySelector('.param-val').addEventListener('input', () => refreshParamSuggestions(card, row));
+
+  container.appendChild(row);
+  refreshParamSuggestions(card, row);
+}
+
+function refreshParamSuggestions(card, row) {
+  const toolName = card.querySelector('.tc-name-input').value.trim();
+  const keyInput = row.querySelector('.param-key');
+  const valInput = row.querySelector('.param-val');
+  const keyList = row.querySelector(`#${keyInput.getAttribute('list')}`);
+  const valueList = row.querySelector(`#${valInput.getAttribute('list')}`);
+
+  const keyNames = getToolParamEntries(toolName).map(([k]) => k);
+  keyList.innerHTML = keyNames.map(name => `<option value="${escAttr(name)}"></option>`).join('');
+
+  const rememberedValues = getRememberedValues(keyInput.value.trim());
+  valueList.innerHTML = rememberedValues.map(v => `<option value="${escAttr(v)}"></option>`).join('');
+}
+
+// ── Send reply ─────────────────────────────────────────────────────────────
+document.getElementById('send-btn').addEventListener('click', async () => {
+  if (!currentReqId) return;
+
+  const content = document.getElementById('content-input').value.trim() || null;
+
+  // Collect tool calls
+  const toolCalls = [];
+  for (const card of document.querySelectorAll('.tc-card')) {
+    const name = card.querySelector('.tc-name-input').value.trim();
+    if (!name) continue;
+    const args = {};
+    for (const row of card.querySelectorAll('.param-row')) {
+      const k = row.querySelector('.param-key').value.trim();
+      const v = row.querySelector('.param-val').value;
+      if (!k) continue;
+      rememberValueForKey(k, v);
+      // Try to parse as JSON, fall back to string
+      try { args[k] = JSON.parse(v); } catch { args[k] = v; }
+    }
+    toolCalls.push({ name, arguments: args });
+  }
+
+  if (!content && toolCalls.length === 0) {
+    alert('Please enter content or add at least one tool call.');
+    return;
+  }
+
+  const payload = { content, tool_calls: toolCalls.length ? toolCalls : null };
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  setStatus('sent', '✅ Reply sent — waiting for next request…');
+
+  try {
+    await fetch(`/reply/${currentReqId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    setStatus('waiting', `❌ Error sending reply: ${err.message}`);
+    btn.disabled = false;
+    return;
+  }
+
+  // Reset UI
+  currentReqId = null;
+  document.getElementById('content-input').value = '';
+  document.getElementById('tc-list').innerHTML = '';
+  updateErrButtonState();
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+// Normalize OpenAI content field: string | ContentBlock[] → string
+function extractContent(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map(block => {
+        if (typeof block === 'string') return block;
+        if (block.type === 'text') return block.text || '';
+        if (block.type === 'image_url') return `[image: ${block.image_url?.url || ''}]`;
+        return JSON.stringify(block);
+      })
+      .join('\n');
+  }
+  return JSON.stringify(content);
+}
+
+function setStatus(type, text) {
+  const bar = document.getElementById('status-bar');
+  bar.className = `status-${type}`;
+  bar.textContent = text;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escAttr(s) {
+  return String(s).replace(/"/g, '&quot;');
+}
+
+// ── Generic JSON-Schema renderer ───────────────────────────────────────────
+// Recursively renders a JSON Schema node (object/array/primitive/enum/oneOf...).
+// Falls back to a pretty-printed JSON dump for shapes we don't specifically handle.
+function renderSchema(schema, depth = 0) {
+  if (schema === null || schema === undefined) return '';
+  if (typeof schema !== 'object') return `<code>${escHtml(String(schema))}</code>`;
+  if (depth > 8) return `<span style="color:#a78bfa">…(deep)</span>`;
+
+  // $ref / unresolved — just show as-is
+  if (schema.$ref) {
+    return `<span style="color:#a78bfa">$ref</span> <code>${escHtml(schema.$ref)}</code>`;
+  }
+
+  const parts = [];
+
+  // type + description header line (shown when present)
+  const typeLabel = renderTypeLabel(schema);
+  const headerBits = [];
+  if (typeLabel) headerBits.push(typeLabel);
+  if (Array.isArray(schema.enum)) {
+    headerBits.push(`<span style="color:#fbbf24">enum</span> <code>${escHtml(JSON.stringify(schema.enum))}</code>`);
+  }
+  if ('const' in schema) {
+    headerBits.push(`<span style="color:#fbbf24">const</span> <code>${escHtml(JSON.stringify(schema.const))}</code>`);
+  }
+  if ('default' in schema) {
+    headerBits.push(`<span style="color:#718096">default</span> <code>${escHtml(JSON.stringify(schema.default))}</code>`);
+  }
+  if (schema.format) {
+    headerBits.push(`<span style="color:#718096">format=${escHtml(schema.format)}</span>`);
+  }
+  if (headerBits.length) parts.push(`<div>${headerBits.join(' · ')}</div>`);
+
+  if (schema.description) {
+    parts.push(`<div style="color:#a0aec0">— ${escHtml(schema.description)}</div>`);
+  }
+
+  // object: properties
+  if (schema.properties && typeof schema.properties === 'object') {
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    const rows = Object.entries(schema.properties).map(([k, v]) => {
+      const req = required.includes(k)
+        ? `<span style="color:#ef4444;font-size:10px"> required</span>`
+        : `<span style="color:#4a5568;font-size:10px"> optional</span>`;
+      const child = renderSchema(v, depth + 1);
+      return `<div style="margin:2px 0">
+        <span style="color:#e2e8f0;font-family:monospace">${escHtml(k)}</span>${req}
+        <div style="margin-left:12px;padding-left:8px;border-left:1px dashed #2d3748">${child}</div>
+      </div>`;
+    }).join('');
+    parts.push(`<div>${rows}</div>`);
+  }
+
+  // object: additionalProperties (only render if it's a schema)
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+    parts.push(`<div style="margin:2px 0">
+      <span style="color:#e2e8f0;font-family:monospace">[additionalProperties]</span>
+      <div style="margin-left:12px;padding-left:8px;border-left:1px dashed #2d3748">${renderSchema(schema.additionalProperties, depth + 1)}</div>
+    </div>`);
+  }
+
+  // array: items
+  if (schema.items) {
+    if (Array.isArray(schema.items)) {
+      const tuple = schema.items.map((it, i) =>
+        `<div style="margin:2px 0">
+          <span style="color:#e2e8f0;font-family:monospace">[${i}]</span>
+          <div style="margin-left:12px;padding-left:8px;border-left:1px dashed #2d3748">${renderSchema(it, depth + 1)}</div>
+        </div>`
+      ).join('');
+      parts.push(`<div>${tuple}</div>`);
+    } else {
+      parts.push(`<div style="margin:2px 0">
+        <span style="color:#e2e8f0;font-family:monospace">[items]</span>
+        <div style="margin-left:12px;padding-left:8px;border-left:1px dashed #2d3748">${renderSchema(schema.items, depth + 1)}</div>
+      </div>`);
+    }
+  }
+
+  // composition keywords
+  for (const key of ['oneOf', 'anyOf', 'allOf']) {
+    if (Array.isArray(schema[key])) {
+      const variants = schema[key].map((s, i) =>
+        `<div style="margin:2px 0">
+          <span style="color:#fbbf24;font-family:monospace">${key}[${i}]</span>
+          <div style="margin-left:12px;padding-left:8px;border-left:1px dashed #2d3748">${renderSchema(s, depth + 1)}</div>
+        </div>`
+      ).join('');
+      parts.push(`<div>${variants}</div>`);
+    }
+  }
+  if (schema.not) {
+    parts.push(`<div style="margin:2px 0">
+      <span style="color:#fbbf24;font-family:monospace">not</span>
+      <div style="margin-left:12px;padding-left:8px;border-left:1px dashed #2d3748">${renderSchema(schema.not, depth + 1)}</div>
+    </div>`);
+  }
+
+  // numeric/string constraints — render generically as small badges
+  const constraintKeys = [
+    'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+    'minLength', 'maxLength', 'pattern',
+    'minItems', 'maxItems', 'uniqueItems',
+    'minProperties', 'maxProperties',
+  ];
+  const constraints = constraintKeys
+    .filter(k => k in schema)
+    .map(k => `<span style="color:#718096">${escHtml(k)}=${escHtml(JSON.stringify(schema[k]))}</span>`);
+  if (constraints.length) parts.push(`<div>${constraints.join(' · ')}</div>`);
+
+  // If we rendered nothing recognizable, dump the raw JSON so nothing is ever lost.
+  if (parts.length === 0) {
+    return `<pre style="margin:0;font-family:'Fira Code',monospace;font-size:11px;color:#a0aec0;white-space:pre-wrap">${escHtml(JSON.stringify(schema, null, 2))}</pre>`;
+  }
+
+  return parts.join('');
+}
+
+function renderTypeLabel(schema) {
+  const t = schema.type;
+  if (Array.isArray(t)) {
+    return `<span style="color:#a78bfa">${escHtml(t.join(' | '))}</span>`;
+  }
+  if (typeof t === 'string') {
+    return `<span style="color:#a78bfa">${escHtml(t)}</span>`;
+  }
+  return '';
+}
+</script>
+</body>
+</html>

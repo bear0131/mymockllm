@@ -1,0 +1,22 @@
+# History (per-session JSON dumps)
+.histories/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# uv / pip
+*.lock.tmp
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+.codebuddy/
