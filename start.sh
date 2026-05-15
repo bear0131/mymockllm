@@ -15,4 +15,15 @@ PORT="${PORT:-8000}"
 echo "[mymockllm] Working dir: $SCRIPT_DIR"
 echo "[mymockllm] Starting on ${HOST}:${PORT} ..."
 
-exec uv run uvicorn main:app --host "$HOST" --port "$PORT" --reload
+exec uv run uvicorn main:app \
+  --host "$HOST" --port "$PORT" \
+  --reload \
+  --reload-dir "$SCRIPT_DIR" \
+  --reload-include "*.py" \
+  --reload-include "*.html" \
+  --reload-exclude ".*" \
+  --reload-exclude ".*/**" \
+  --reload-exclude ".histories/*" \
+  --reload-exclude ".claude/*" \
+  --reload-exclude ".venv/*" \
+  --reload-exclude "__pycache__/*"
