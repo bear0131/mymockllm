@@ -182,6 +182,7 @@ def _rebroadcast_next_pending(exclude_req_id: Optional[str] = None):
 # ---------------------------------------------------------------------------
 
 @app.post("/chat/completions")
+@app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     global _active_session_id
 

@@ -15,7 +15,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
 ## Endpoints
 
 ```
-POST /chat/completions     # OpenAI
+POST /chat/completions     # OpenAI  (also: POST /v1/chat/completions)
 POST /v1/messages          # Anthropic
 ```
 

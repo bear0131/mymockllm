@@ -16,6 +16,9 @@ http://localhost:8000
 
 ### `POST /chat/completions` &nbsp;·&nbsp; OpenAI-compatible
 
+Also exposed at `POST /v1/chat/completions` (same handler) so clients that
+include the `/v1` prefix in their `base_url` work without reconfiguration.
+
 Standard OpenAI Chat Completions request and response. Both streaming
 (`"stream": true`, `text/event-stream`) and non-streaming responses are
 supported — the response shape is decided by your reply in the UI plus the
