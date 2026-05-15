@@ -178,6 +178,128 @@ def _rebroadcast_next_pending(exclude_req_id: Optional[str] = None):
 
 
 # ---------------------------------------------------------------------------
+# OpenAI response helpers
+# ---------------------------------------------------------------------------
+
+
+def _openai_message_from_reply(reply: dict) -> tuple[dict, str]:
+    """Build the OpenAI `choices[0].message` and `finish_reason` from a reply."""
+    if reply.get("tool_calls"):
+        message = {
+            "role": "assistant",
+            "content": reply.get("content") or None,
+            "tool_calls": [
+                {
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": json.dumps(tc.get("arguments") or {}),
+                    },
+                }
+                for tc in reply["tool_calls"]
+            ],
+        }
+        finish_reason = "tool_calls"
+    else:
+        message = {
+            "role": "assistant",
+            "content": reply.get("content", ""),
+        }
+        finish_reason = "stop"
+    return message, finish_reason
+
+
+def _build_openai_response(reply: dict, model: str) -> dict:
+    """Build a non-streaming OpenAI ChatCompletion response object."""
+    message, finish_reason = _openai_message_from_reply(reply)
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+async def _openai_stream(reply: dict, model: str, *, include_usage: bool = False):
+    """Yield SSE bytes that follow OpenAI's chat.completion.chunk protocol.
+
+    Layout:
+      1. one chunk announcing role=assistant
+      2. one chunk per text/tool_call delta (we send each as a single chunk —
+         token-level granularity isn't useful for a mock)
+      3. one chunk with finish_reason and empty delta
+      4. (optional) one chunk with usage stats and empty choices
+      5. final `data: [DONE]\n\n`
+    """
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+    created = int(time.time())
+
+    def chunk(delta: dict, finish_reason=None) -> str:
+        payload = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": delta,
+                "finish_reason": finish_reason,
+            }],
+        }
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    # 1. role
+    yield chunk({"role": "assistant"})
+
+    # 2. content / tool_calls
+    text = reply.get("content") or ""
+    if text and not reply.get("tool_calls"):
+        yield chunk({"content": text})
+
+    tool_calls = reply.get("tool_calls") or []
+    for idx, tc in enumerate(tool_calls):
+        call_id = f"call_{uuid.uuid4().hex[:8]}"
+        # First delta for this tool_call: announce id/type/name
+        yield chunk({
+            "tool_calls": [{
+                "index": idx,
+                "id": call_id,
+                "type": "function",
+                "function": {"name": tc["name"], "arguments": ""},
+            }],
+        })
+        # Second delta: the arguments (as one JSON blob)
+        yield chunk({
+            "tool_calls": [{
+                "index": idx,
+                "function": {"arguments": json.dumps(tc.get("arguments") or {})},
+            }],
+        })
+
+    # 3. finish_reason
+    finish_reason = "tool_calls" if tool_calls else "stop"
+    yield chunk({}, finish_reason=finish_reason)
+
+    # 4. optional usage chunk
+    if include_usage:
+        usage_payload = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+        yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
+
+    # 5. terminator
+    yield "data: [DONE]\n\n"
+
+
+# ---------------------------------------------------------------------------
 # SWE-agent endpoint
 # ---------------------------------------------------------------------------
 
@@ -266,39 +388,16 @@ async def chat_completions(request: Request):
         "created_at": session["created_at"],
     })
 
-    # Build OpenAI-compatible response
-    if reply.get("tool_calls"):
-        message = {
-            "role": "assistant",
-            "content": reply.get("content") or None,
-            "tool_calls": [
-                {
-                    "id": f"call_{uuid.uuid4().hex[:8]}",
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": json.dumps(tc["arguments"]),
-                    },
-                }
-                for tc in reply["tool_calls"]
-            ],
-        }
-        finish_reason = "tool_calls"
-    else:
-        message = {
-            "role": "assistant",
-            "content": reply.get("content", ""),
-        }
-        finish_reason = "stop"
-
-    return JSONResponse(content={
-        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": body.get("model", "mock-model"),
-        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    })
+    # Build OpenAI-compatible response (stream or non-stream)
+    model = body.get("model", "mock-model")
+    if body.get("stream"):
+        stream_opts = body.get("stream_options") or {}
+        include_usage = bool(stream_opts.get("include_usage"))
+        return StreamingResponse(
+            _openai_stream(reply, model, include_usage=include_usage),
+            media_type="text/event-stream",
+        )
+    return JSONResponse(content=_build_openai_response(reply, model))
 
 
 # ---------------------------------------------------------------------------
